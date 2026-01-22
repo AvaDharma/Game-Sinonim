@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balap Sinonim SMA - Multiplayer</title>
+    <!-- Tailwind CSS untuk styling cepat -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome untuk Ikon Mobil -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* Custom Styles & Animation */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; /* Mencegah scroll agar muat satu layar */
+            background-color: #f0f4f8;
+            user-select: none; /* Mencegah seleksi teks saat bermain */
+        }
+
+        .track-container {
+            background: #333;
+            border-bottom: 2px dashed #fff;
+            position: relative;
+            height: 60px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .finish-line {
+            position: absolute;
+            right: 20px;
+            top: 0;
+            bottom: 0;
+            width: 10px;
+            background-image: repeating-linear-gradient(0deg, #000, #000 10px, #fff 10px, #fff 20px);
+            z-index: 1;
+        }
+
+        .car {
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2.5rem;
+            transition: left 0.5s linear; /* Animasi pergerakan halus */
+            z-index: 2;
+        }
+
+        .keyboard-btn {
+            @apply bg-white border border-gray-300 rounded shadow hover:bg-blue-100 active:bg-blue-300 font-bold text-gray-700 transition-colors;
+            height: 35px; /* Fixed height agar pas */
+            width: 30px;
+            font-size: 0.9rem;
+        }
+        
+        .keyboard-btn.used {
+            @apply bg-gray-300 text-gray-400 cursor-not-allowed border-gray-200 shadow-none;
+        }
+        
+        .keyboard-btn.correct {
+            @apply bg-green-500 text-white border-green-600;
+        }
+
+        .keyboard-btn.wrong {
+            @apply bg-red-500 text-white border-red-600;
+        }
+
+        /* Layout Grid Keyboards */
+        .keyboard-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 4px;
+            max-width: 350px;
+            margin: 0 auto;
+        }
+
+        .letter-slot {
+            border-bottom: 3px solid #333;
+            display: inline-block;
+            width: 25px;
+            height: 35px;
+            line-height: 35px;
+            text-align: center;
+            margin: 0 2px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <!-- ================= HALAMAN AWAL (START SCREEN) ================= -->
+    <div id="start-screen" class="flex-grow flex items-center justify-center bg-gradient-to-br from-blue-500 to-indigo-600 p-4">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-lg text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2"><i class="fas fa-flag-checkered text-red-500"></i> Balap Sinonim</h1>
+            <p class="text-gray-500 mb-6 text-sm">Tebak kata sinonim dengan benar untuk mempercepat mobilmu!</p>
+            
+            <div class="space-y-4 text-left">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Nama Sekolah</label>
+                    <input type="text" id="input-sekolah" class="mt-1 block w-full rounded-md border-gray-300 border p-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Contoh: SMA Negeri 1 Jakarta">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                        <label class="block text-sm font-bold text-blue-800">Pemain 1 (Kiri)</label>
+                        <input type="text" id="input-p1" class="mt-1 block w-full rounded border-gray-300 border p-2 text-sm" placeholder="Nama Pemain 1">
+                    </div>
+                    <div class="bg-red-50 p-3 rounded-lg border border-red-200">
+                        <label class="block text-sm font-bold text-red-800">Pemain 2 (Kanan)</label>
+                        <input type="text" id="input-p2" class="mt-1 block w-full rounded border-gray-300 border p-2 text-sm" placeholder="Nama Pemain 2">
+                    </div>
+                </div>
+                
+                <!-- URL App Script (Hidden config for simplicity, usually hardcoded in JS) -->
+                <input type="hidden" id="app-script-url" value="https://script.google.com/macros/s/AKfycbx_PLACEHOLDER_CHANGE_THIS_TO_YOUR_DEPLOYMENT_ID/exec">
+            </div>
+
+            <button id="btn-start" onclick="startGame()" disabled class="mt-8 w-full bg-gray-400 text-white font-bold py-3 px-4 rounded transition duration-300 cursor-not-allowed">
+                MULAI BALAPAN
+            </button>
+            <p class="mt-2 text-xs text-gray-400">*Isi semua data untuk mengaktifkan tombol</p>
+        </div>
+    </div>
+
+    <!-- ================= HALAMAN PERMAINAN (GAME SCREEN) ================= -->
+    <div id="game-screen" class="hidden flex-col h-full">
+        
+        <!-- BAGIAN ATAS: LINTASAN BALAP -->
+        <div class="bg-gray-800 p-2 shadow-lg z-10">
+            <!-- Track Pemain 1 -->
+            <div class="flex items-center mb-1">
+                <div class="w-24 text-blue-400 font-bold text-xs truncate px-2" id="display-name-p1">Pemain 1</div>
+                <div class="track-container rounded-r-lg relative flex-grow">
+                    <div class="finish-line"></div>
+                    <div id="car-p1" class="car text-blue-500"><i class="fas fa-car-side"></i></div>
+                </div>
+            </div>
+            
+            <!-- Track Pemain 2 -->
+            <div class="flex items-center">
+                <div class="w-24 text-red-400 font-bold text-xs truncate px-2" id="display-name-p2">Pemain 2</div>
+                <div class="track-container rounded-r-lg relative flex-grow">
+                    <div class="finish-line"></div>
+                    <div id="car-p2" class="car text-red-500"><i class="fas fa-car-side flip-horizontal"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BAGIAN TENGAH & BAWAH: AREA BERMAIN (SPLIT SCREEN) -->
+        <div class="flex-grow flex overflow-hidden">
+            
+            <!-- AREA PEMAIN 1 -->
+            <div class="w-1/2 border-r-4 border-gray-300 flex flex-col bg-white relative">
+                <!-- Status Bar P1 -->
+                <div class="bg-blue-100 p-2 flex justify-between text-xs font-bold text-blue-800">
+                    <span>Nyawa Kata: <span id="lives-p1">3</span>/3</span>
+                    <span>Jarak: <span id="dist-p1">0</span>%</span>
+                </div>
+
+                <!-- Soal P1 -->
+                <div class="flex-grow flex flex-col items-center justify-center p-2">
+                    <div class="text-gray-500 text-xs uppercase tracking-widest mb-1">Sinonim dari:</div>
+                    <h2 id="question-p1" class="text-xl md:text-2xl font-bold text-gray-800 mb-4 text-center">...</h2>
+                    
+                    <div id="slots-p1" class="mb-4 text-center h-10">
+                        <!-- Slot huruf akan digenerate disini -->
+                    </div>
+                    
+                    <div id="message-p1" class="h-6 text-sm font-bold text-center mb-2"></div>
+                </div>
+
+                <!-- Keyboard P1 -->
+                <div class="p-2 bg-gray-100 border-t border-gray-200">
+                    <div class="keyboard-grid" id="keyboard-p1">
+                        <!-- Tombol A-Z P1 -->
+                    </div>
+                </div>
+                
+                <!-- Overlay Penalti P1 -->
+                <div id="penalty-overlay-p1" class="absolute inset-0 bg-black bg-opacity-70 z-20 hidden flex items-center justify-center flex-col text-white">
+                    <i class="fas fa-exclamation-triangle text-3xl text-yellow-400 mb-2"></i>
+                    <h3 class="font-bold">Mesin Panas!</h3>
+                    <p class="text-sm">Pendinginan...</p>
+                </div>
+            </div>
+
+            <!-- AREA PEMAIN 2 -->
+            <div class="w-1/2 flex flex-col bg-white relative">
+                <!-- Status Bar P2 -->
+                <div class="bg-red-100 p-2 flex justify-between text-xs font-bold text-red-800">
+                    <span>Nyawa Kata: <span id="lives-p2">3</span>/3</span>
+                    <span>Jarak: <span id="dist-p2">0</span>%</span>
+                </div>
+
+                <!-- Soal P2 -->
+                <div class="flex-grow flex flex-col items-center justify-center p-2">
+                    <div class="text-gray-500 text-xs uppercase tracking-widest mb-1">Sinonim dari:</div>
+                    <h2 id="question-p2" class="text-xl md:text-2xl font-bold text-gray-800 mb-4 text-center">...</h2>
+                    
+                    <div id="slots-p2" class="mb-4 text-center h-10">
+                        <!-- Slot huruf -->
+                    </div>
+                    
+                    <div id="message-p2" class="h-6 text-sm font-bold text-center mb-2"></div>
+                </div>
+
+                <!-- Keyboard P2 -->
+                <div class="p-2 bg-gray-100 border-t border-gray-200">
+                    <div class="keyboard-grid" id="keyboard-p2">
+                        <!-- Tombol A-Z P2 -->
+                    </div>
+                </div>
+
+                <!-- Overlay Penalti P2 -->
+                <div id="penalty-overlay-p2" class="absolute inset-0 bg-black bg-opacity-70 z-20 hidden flex items-center justify-center flex-col text-white">
+                    <i class="fas fa-exclamation-triangle text-3xl text-yellow-400 mb-2"></i>
+                    <h3 class="font-bold">Mesin Panas!</h3>
+                    <p class="text-sm">Pendinginan...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= MODAL SELESAI ================= -->
+    <div id="end-modal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg p-8 max-w-md w-full text-center shadow-2xl transform scale-100">
+            <div class="mb-4 text-6xl text-yellow-500">
+                <i class="fas fa-trophy"></i>
+            </div>
+            <h2 class="text-3xl font-bold mb-2">Permainan Selesai!</h2>
+            <p id="winner-text" class="text-xl font-semibold text-gray-700 mb-6">Pemenang: -</p>
+            
+            <div class="bg-gray-100 p-4 rounded mb-6 text-left text-sm">
+                <p><strong>Pemain 1:</strong> <span id="res-name-p1">-</span> (<span id="res-stat-p1">-</span>)</p>
+                <p><strong>Pemain 2:</strong> <span id="res-name-p2">-</span> (<span id="res-stat-p2">-</span>)</p>
+                <p class="mt-2 text-xs text-gray-500 italic" id="status-upload">Mengirim data ke server...</p>
+            </div>
+
+            <button onclick="location.reload()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-full shadow-lg transition transform hover:scale-105">
+                Main Lagi
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT GAME LOGIC -->
+    <script>
+        // --- KONFIGURASI ---
+        // Waktu total tempuh normal (10 menit = 600 detik)
+        const TOTAL_DURATION_SEC = 600; 
+        // Bonus percepatan (hemat 10 detik)
+        const BONUS_TIME_SEC = 10;
+        // Penalti perlambatan (mundur 5 detik)
+        const PENALTY_TIME_SEC = 5;
+        // Total jarak lintasan (100%)
+        const TOTAL_DISTANCE = 100;
+        
+        // URL Apps Script (Ganti dengan URL Deployment Web App Anda)
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_PLACEHOLDER_CHANGE_THIS_TO_YOUR_DEPLOYMENT_ID/exec";
+
+        // --- DATABASE KATA SINONIM (50 Kata) ---
+        const synonymDB = [
+            {q: "AGRESI", a: "SERANGAN"}, {q: "AKURAT", a: "TEPAT"}, {q: "ALMANAK", a: "PENANGGALAN"}, {q: "AMBIGU", a: "BERMAKNA GANDA"}, {q: "ANDAL", a: "TANGGUH"},
+            {q: "ANGKUH", a: "SOMBONG"}, {q: "ANULIR", a: "BATAL"}, {q: "BAHTERA", a: "PERAHU"}, {q: "BARBAR", a: "TIDAK BERADAB"}, {q: "BERDIKARI", a: "MANDIRI"},
+            {q: "BOGA", a: "MAKANAN"}, {q: "BONAFIDE", a: "TERPERCAYA"}, {q: "CITRA", a: "GAMBARAN"}, {q: "DARMA", a: "PENGABDIAN"}, {q: "DEDIKASI", a: "PENGORBANAN"},
+            {q: "DEFLEKSI", a: "PENYIMPANGAN"}, {q: "DEHIDRASI", a: "KEHILANGAN CAIRAN"}, {q: "DELUSI", a: "KHAYALAN"}, {q: "DEMOGRAFI", a: "KEPENDUDUKAN"}, {q: "DERIVASI", a: "TURUNAN"},
+            {q: "DESKRIPSI", a: "PEMAPARAN"}, {q: "DIAGNOSIS", a: "PENENTUAN"}, {q: "DIALOG", a: "PERCAKAPAN"}, {q: "DIMENSI", a: "UKURAN"}, {q: "DINAMIS", a: "BERGERAK"},
+            {q: "DISPENSASI", a: "PENGECUALIAN"}, {q: "DOMISILI", a: "TEMPAT TINGGAL"}, {q: "DONASI", a: "SUMBANGAN"}, {q: "EFEKTIF", a: "MANJUR"}, {q: "EGOIS", a: "MEMENTINGKAN DIRI"},
+            {q: "EKSISTENSI", a: "KEBERADAAN"}, {q: "EKSPLISIT", a: "GAMBLANG"}, {q: "ELABORASI", a: "PENJELASAN"}, {q: "ENTITAS", a: "WUJUD"}, {q: "EPILOG", a: "PENUTUP"},
+            {q: "ESTETIKA", a: "KEINDAHAN"}, {q: "ESTIMASI", a: "PERKIRAAN"}, {q: "ETIMOLOGI", a: "ASAL USUL KATA"}, {q: "EVALUASI", a: "PENILAIAN"}, {q: "EVOKASI", a: "PENGGUGAH RASA"},
+            {q: "FAKTA", a: "KENYATAAN"}, {q: "FENOMENA", a: "GEJALA"}, {q: "FIKTIF", a: "KHAYALAN"}, {q: "FISKAL", a: "PERPAJAKAN"}, {q: "FLEKSIBEL", a: "LUWES"},
+            {q: "FRIKSI", a: "GESEKAN"}, {q: "FUSI", a: "PENGGABUNGAN"}, {q: "GALAT", a: "KELIRU"}, {q: "GENERIK", a: "UMUM"}, {q: "HARMONIS", a: "SERASI"}
+        ];
+
+        // --- STATE VARIABLE ---
+        let gameRunning = false;
+        let gameInterval;
+        let players = {
+            p1: { name: "", school: "", progress: 0, currentWordIdx: -1, currentAnswer: "", guessed: [], lives: 3, status: "Playing", finished: false },
+            p2: { name: "", school: "", progress: 0, currentWordIdx: -1, currentAnswer: "", guessed: [], lives: 3, status: "Playing", finished: false }
+        };
+        
+        // Base Speed: Persentase per milidetik (100% / 600000ms)
+        const BASE_SPEED = TOTAL_DISTANCE / (TOTAL_DURATION_SEC * 1000); 
+
+        // --- INPUT VALIDATION ---
+        const inputs = ['input-sekolah', 'input-p1', 'input-p2'];
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', checkStartReady);
+        });
+
+        function checkStartReady() {
+            const allFilled = inputs.every(id => document.getElementById(id).value.trim() !== "");
+            const btn = document.getElementById('btn-start');
+            if (allFilled) {
+                btn.disabled = false;
+                btn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+            } else {
+                btn.disabled = true;
+                btn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            }
+        }
+
+        // --- GAME INIT ---
+        function startGame() {
+            // Set Player Data
+            players.p1.name = document.getElementById('input-p1').value;
+            players.p2.name = document.getElementById('input-p2').value;
+            const school = document.getElementById('input-sekolah').value;
+            players.p1.school = school;
+            players.p2.school = school;
+
+            // UI Changes
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-screen').classList.remove('hidden');
+            document.getElementById('game-screen').classList.add('flex');
+            
+            document.getElementById('display-name-p1').textContent = players.p1.name;
+            document.getElementById('display-name-p2').textContent = players.p2.name;
+
+            // Init Keyboards & Words
+            createKeyboard('p1');
+            createKeyboard('p2');
+            nextWord('p1');
+            nextWord('p2');
+
+            // Start Loop
+            gameRunning = true;
+            gameInterval = setInterval(gameLoop, 100); // 10 tick per detik
+        }
+
+        // --- CORE GAME LOOP ---
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            // Update Physics
+            moveCar('p1');
+            moveCar('p2');
+
+            // Check Finish
+            if (players.p1.progress >= 100 || players.p2.progress >= 100) {
+                endGame();
+            }
+        }
+
+        function moveCar(pid) {
+            if (players[pid].finished) return;
+
+            // Base movement (constant speed)
+            players[pid].progress += BASE_SPEED * 100; // *100 karena interval 100ms
+            
+            // Clamp value
+            if (players[pid].progress > 100) players[pid].progress = 100;
+            if (players[pid].progress < 0) players[pid].progress = 0;
+
+            // Update UI
+            const carElem = document.getElementById(`car-${pid}`);
+            // Mengurangi sedikit lebar mobil agar tidak lewat garis (kurang lebih 90% lebar track efektif)
+            carElem.style.left = `calc(${players[pid].progress}% - 40px)`; 
+            document.getElementById(`dist-${pid}`).innerText = Math.floor(players[pid].progress);
+        }
+
+        // --- WORD MECHANICS ---
+        function nextWord(pid) {
+            // Pick random word
+            const randIdx = Math.floor(Math.random() * synonymDB.length);
+            players[pid].currentWordIdx = randIdx;
+            
+            const wordObj = synonymDB[randIdx];
+            players[pid].currentAnswer = wordObj.a.replace(/\s/g, ''); // Remove spaces for checking
+            players[pid].guessed = [];
+            players[pid].lives = 3;
+
+            // UI Update
+            document.getElementById(`question-${pid}`).innerText = wordObj.q;
+            document.getElementById(`lives-${pid}`).innerText = 3;
+            document.getElementById(`message-${pid}`).innerText = "";
+            renderSlots(pid, wordObj.a); // Pass original answer with spaces for display if needed
+            resetKeyboard(pid);
+        }
+
+        function renderSlots(pid, answerText) {
+            const container = document.getElementById(`slots-${pid}`);
+            container.innerHTML = '';
+            
+            const cleanAnswer = answerText.replace(/\s/g, ''); // Jawaban tanpa spasi
+            const currentGuess = players[pid].guessed;
+
+            let displayHTML = '';
+            let charIndex = 0;
+
+            // Loop melalui jawaban asli (mungkin ada spasi jika frase, tapi soal kita satu kata rata2)
+            // Namun logic di bawah disederhanakan untuk jawaban tanpa spasi agar match dengan keyboard
+            for (let i = 0; i < cleanAnswer.length; i++) {
+                const char = cleanAnswer[i];
+                if (currentGuess.includes(char)) {
+                    displayHTML += `<span class="letter-slot border-b-green-500 text-green-700">${char}</span>`;
+                } else {
+                    displayHTML += `<span class="letter-slot text-transparent">_</span>`;
+                }
+            }
+            container.innerHTML = displayHTML;
+        }
+
+        function createKeyboard(pid) {
+            const container = document.getElementById(`keyboard-${pid}`);
+            container.innerHTML = '';
+            const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
+            
+            letters.forEach(char => {
+                const btn = document.createElement('button');
+                btn.innerText = char;
+                btn.id = `key-${pid}-${char}`;
+                btn.className = 'keyboard-btn';
+                btn.onclick = () => handleInput(pid, char);
+                container.appendChild(btn);
+            });
+        }
+
+        function resetKeyboard(pid) {
+            const buttons = document.querySelectorAll(`#keyboard-${pid} button`);
+            buttons.forEach(btn => {
+                btn.className = 'keyboard-btn';
+                btn.disabled = false;
+            });
+        }
+
+        function handleInput(pid, char) {
+            if (!gameRunning) return;
+            const player = players[pid];
+            
+            // Disable button
+            const btn = document.getElementById(`key-${pid}-${char}`);
+            btn.disabled = true;
+            btn.classList.add('used');
+
+            // Check answer
+            if (player.currentAnswer.includes(char)) {
+                // Correct Letter
+                btn.classList.add('correct');
+                player.guessed.push(char);
+                renderSlots(pid, synonymDB[player.currentWordIdx].a);
+                checkWordComplete(pid);
+            } else {
+                // Wrong Letter
+                btn.classList.add('wrong');
+                player.lives--;
+                document.getElementById(`lives-${pid}`).innerText = player.lives;
+                
+                if (player.lives <= 0) {
+                    handleWordFail(pid);
+                }
+            }
+        }
+
+        function checkWordComplete(pid) {
+            const player = players[pid];
+            const isComplete = player.currentAnswer.split('').every(c => player.guessed.includes(c));
+            
+            if (isComplete) {
+                document.getElementById(`message-${pid}`).innerHTML = "<span class='text-green-600'>Benar! Percepatan!</span>";
+                
+                // Bonus Logic: Jarak tempuh bertambah setara 10 detik
+                // Speed = 100/600 per detik. Bonus = (100/600)*10 = 1.66%
+                const bonusJump = (TOTAL_DISTANCE / TOTAL_DURATION_SEC) * BONUS_TIME_SEC;
+                player.progress += bonusJump;
+                
+                setTimeout(() => nextWord(pid), 1000);
+            }
+        }
+
+        function handleWordFail(pid) {
+            document.getElementById(`message-${pid}`).innerHTML = "<span class='text-red-600'>Gagal! Mesin Panas!</span>";
+            
+            // Penalty Logic: Mundur setara 5 detik atau Freeze
+            // Di sini kita pakai mundur progress
+            const penaltyDrop = (TOTAL_DISTANCE / TOTAL_DURATION_SEC) * PENALTY_TIME_SEC;
+            players[pid].progress -= penaltyDrop;
+            
+            // Visual Penalty (Overlay)
+            const overlay = document.getElementById(`penalty-overlay-${pid}`);
+            overlay.classList.remove('hidden');
+            
+            setTimeout(() => {
+                overlay.classList.add('hidden');
+                nextWord(pid);
+            }, 1500); // Jeda 1.5 detik sebelum kata baru
+        }
+
+        // --- END GAME & DATA SUBMISSION ---
+        function endGame() {
+            gameRunning = false;
+            clearInterval(gameInterval);
+
+            let winner = "";
+            let p1Status = "Kalah";
+            let p2Status = "Kalah";
+
+            // Tentukan pemenang (siapa yang paling jauh atau mencapai 100 lebih dulu)
+            if (players.p1.progress > players.p2.progress) {
+                winner = players.p1.name;
+                p1Status = "Menang";
+            } else if (players.p2.progress > players.p1.progress) {
+                winner = players.p2.name;
+                p2Status = "Menang";
+            } else {
+                winner = "Seri";
+                p1Status = "Seri";
+                p2Status = "Seri";
+            }
+
+            players.p1.status = p1Status;
+            players.p2.status = p2Status;
+
+            // Tampilkan Modal
+            document.getElementById('end-modal').classList.remove('hidden');
+            document.getElementById('winner-text').innerText = `Pemenang: ${winner}`;
+            
+            document.getElementById('res-name-p1').innerText = players.p1.name;
+            document.getElementById('res-stat-p1').innerText = p1Status;
+            
+            document.getElementById('res-name-p2').innerText = players.p2.name;
+            document.getElementById('res-stat-p2').innerText = p2Status;
+
+            sendDataToSheet();
+        }
+
+        function sendDataToSheet() {
+            const scriptURL = document.getElementById('app-script-url').value;
+            const statusLabel = document.getElementById('status-upload');
+
+            // Data Payload
+            const dataP1 = {
+                timestamp: new Date().toISOString(),
+                nama: players.p1.name,
+                sekolah: players.p1.school,
+                jenis: "Tebak Sinonim",
+                level: "SMA",
+                status: players.p1.status,
+                waktu: "Selesai"
+            };
+
+            const dataP2 = {
+                timestamp: new Date().toISOString(),
+                nama: players.p2.name,
+                sekolah: players.p2.school,
+                jenis: "Tebak Sinonim",
+                level: "SMA",
+                status: players.p2.status,
+                waktu: "Selesai"
+            };
+
+            // Menggunakan no-cors karena biasanya Google Script memiliki masalah CORS jika dipanggil client-side langsung tanpa backend proxy.
+            // Catatan: mode 'no-cors' tidak mengembalikan response JSON yang bisa dibaca, tapi data tetap terkirim jika endpoint benar.
+            
+            // Kirim P1
+            fetch(scriptURL, {
+                method: 'POST',
+                mode: 'no-cors', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dataP1)
+            }).then(() => {
+                // Kirim P2 setelah P1 (sedikit delay untuk safety)
+                setTimeout(() => {
+                    fetch(scriptURL, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(dataP2)
+                    }).then(() => {
+                        statusLabel.innerText = "Data berhasil dikirim ke server!";
+                        statusLabel.classList.add('text-green-600');
+                    }).catch(err => {
+                        statusLabel.innerText = "Gagal kirim P2. Cek koneksi.";
+                    });
+                }, 500);
+            }).catch(error => {
+                console.error('Error!', error.message);
+                statusLabel.innerText = "Gagal mengirim data. Pastikan URL Apps Script Benar.";
+                statusLabel.classList.add('text-red-600');
+            });
+        }
+    </script>
+</body>
+</html>
+```
+
+### Instruksi Integrasi Google Spreadsheet (AppScript)
+
+Agar fitur pengiriman data berfungsi, Anda perlu mengatur Google Spreadsheet sebagai berikut:
+
+1.  Buka **Google Spreadsheet** baru.
+2.  Buat Header di baris pertama: `Timestamp`, `Nama`, `Sekolah`, `Jenis Permainan`, `Level`, `Status`, `Waktu`.
+3.  Klik **Ekstensi (Extensions)** > **Apps Script**.
+4.  Hapus kode yang ada, lalu salin kode di bawah ini:
+
+```javascript
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var data = JSON.parse(e.postData.contents);
+  
+  sheet.appendRow([
+    new Date(), // Timestamp server side lebih aman
+    data.nama,
+    data.sekolah,
+    data.jenis,
+    data.level,
+    data.status,
+    data.waktu
+  ]);
+  
+  return ContentService.createTextOutput(JSON.stringify({"result":"success"}))
+    .setMimeType(ContentService.MimeType.JSON);
+}
